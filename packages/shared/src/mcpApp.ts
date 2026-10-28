@@ -29,8 +29,12 @@ const MAX_NAME_LENGTH = 256;
 // bounds the whole reference.
 const MAX_RESOURCE_URI_LENGTH = 4096;
 
-/** `_meta.ui.csp` on a UI resource: origins the app needs, by kind. */
+/** The execution policy and allowed origins declared by a UI resource. */
 export interface McpAppCsp {
+  /** Per-resource WebAssembly opt-in from the MCP Apps proposal. */
+  readonly wasmUnsafeEval?: boolean;
+  /** T3 extension for embedded script engines; other hosts may not implement it. */
+  readonly unsafeEval?: boolean;
   readonly connectDomains?: ReadonlyArray<string>;
   readonly resourceDomains?: ReadonlyArray<string>;
   readonly frameDomains?: ReadonlyArray<string>;
@@ -79,11 +83,15 @@ function readDomains(value: unknown): ReadonlyArray<string> | undefined {
 export function readMcpAppCsp(value: unknown): McpAppCsp | undefined {
   if (!Predicate.isObject(value)) return undefined;
   const csp: {
+    wasmUnsafeEval?: boolean;
+    unsafeEval?: boolean;
     connectDomains?: ReadonlyArray<string>;
     resourceDomains?: ReadonlyArray<string>;
     frameDomains?: ReadonlyArray<string>;
     baseUriDomains?: ReadonlyArray<string>;
   } = {};
+  if (value.wasmUnsafeEval === true) csp.wasmUnsafeEval = true;
+  if (value.unsafeEval === true) csp.unsafeEval = true;
   for (const key of [
     "connectDomains",
     "resourceDomains",
@@ -179,9 +187,15 @@ export function mcpAppContentSecurityPolicy(csp: McpAppCsp | undefined): string 
   const resources = csp?.resourceDomains?.join(" ") ?? "";
   const list = (domains: ReadonlyArray<string> | undefined, fallback: string) =>
     domains === undefined || domains.length === 0 ? fallback : domains.join(" ");
+  const execution =
+    csp?.unsafeEval === true
+      ? "'unsafe-eval' "
+      : csp?.wasmUnsafeEval === true
+        ? "'wasm-unsafe-eval' "
+        : "";
   return [
     "default-src 'none'",
-    `script-src 'unsafe-inline' ${resources}`.trim(),
+    `script-src 'unsafe-inline' ${execution}${resources}`.trim(),
     `style-src 'unsafe-inline' ${resources}`.trim(),
     `img-src data: blob: ${resources}`.trim(),
     `font-src data: ${resources}`.trim(),

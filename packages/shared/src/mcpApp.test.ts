@@ -30,6 +30,43 @@ describe("mcpAppContentSecurityPolicy", () => {
     expect(policy).toContain("script-src 'unsafe-inline' https://*.cdn.test");
     expect(policy).toContain("img-src data: blob: https://*.cdn.test");
   });
+
+  it("enables WebAssembly only when the resource explicitly requests it", () => {
+    const csp = readMcpAppCsp({ wasmUnsafeEval: true });
+    expect(csp).toEqual({ wasmUnsafeEval: true });
+    const policy = mcpAppContentSecurityPolicy(csp);
+    expect(policy).toContain("script-src 'unsafe-inline' 'wasm-unsafe-eval'");
+    expect(policy).not.toContain("'unsafe-eval'");
+    expect(policy).toContain("connect-src 'none'");
+    for (const value of [undefined, false, "true", {}, [true]]) {
+      expect(mcpAppContentSecurityPolicy(readMcpAppCsp({ wasmUnsafeEval: value }))).not.toContain(
+        "'wasm-unsafe-eval'",
+      );
+    }
+  });
+
+  it("enables dynamic JavaScript only for the resource declaring it", async () => {
+    const csp = readMcpAppCsp({ unsafeEval: true, wasmUnsafeEval: true });
+    expect(mcpAppContentSecurityPolicy(csp)).toContain("script-src 'unsafe-inline' 'unsafe-eval'");
+    expect(mcpAppContentSecurityPolicy(csp)).toContain("connect-src 'none'");
+    expect(mcpAppContentSecurityPolicy(csp)).toContain("frame-src 'none'");
+    const { compactDynamicToolOutput } = await import("./toolOutput.ts");
+    const reference = {
+      attachmentId: "a",
+      server: "engine",
+      tool: "preview",
+      resourceUri: "ui://engine/preview",
+      csp,
+    };
+    expect(
+      readMcpAppReference(compactDynamicToolOutput({ t3McpApp: reference })?.t3McpApp),
+    ).toEqual(reference);
+    for (const value of [undefined, false, "true", {}, [true]]) {
+      expect(mcpAppContentSecurityPolicy(readMcpAppCsp({ unsafeEval: value }))).not.toContain(
+        "'unsafe-eval'",
+      );
+    }
+  });
 });
 
 describe("injectMcpAppCsp", () => {
